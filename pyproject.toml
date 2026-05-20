@@ -1,0 +1,18 @@
+[build-system]
+requires = ["uv_build>=0.10.8,<0.11"]
+build-backend = "uv_build"
+
+[project]
+name = "index-v2-data-sinks"
+version = "0.1.0"
+description = "Data sinks examples for Index v2"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "catsu>=0.1.8",
+    "chonkie>=1.6.7",
+    "llama-cloud>=2.6.0",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.1",
+    "pymongo>=4.17.0",
+]
