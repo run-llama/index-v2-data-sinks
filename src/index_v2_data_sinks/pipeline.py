@@ -1,9 +1,13 @@
 import asyncio
 from asyncio import Semaphore
+from collections.abc import Callable
 from typing import Literal
+
+from index_v2_data_sinks.export.turbopuffer import get_turbopuffer_exporter
 
 from .chunking import ChunkerService, ChunkingStrategy
 from .embeddings import SupportedEmbeddingModel, embeddings_service
+from .export.base import Exporter
 from .export.mongo import get_mongo_exporter
 from .export.pgvector import get_pgvector_exporter
 from .parsed_outputs import get_parsed_outputs
@@ -15,10 +19,16 @@ from .schema import (
 )
 
 MAX_CONCURRENT_EXPORTS = 10
+ExportTarget = Literal["mongo", "postgres", "turbopuffer"]
+EXPORT_TARGET_TO_FACTORY: dict[ExportTarget, Callable[[], Exporter]] = {
+    "mongo": get_mongo_exporter,
+    "postgres": get_pgvector_exporter,
+    "turbopuffer": get_turbopuffer_exporter,
+}
 
 
 async def export_pipeline(
-    export_to: Literal["mongo", "postgres"],
+    export_to: ExportTarget,
     directory_name: str,
     project_id: str,
     config_id: str,
@@ -26,10 +36,7 @@ async def export_pipeline(
     metadata: MetadataDict | None = None,
     embedding_model: SupportedEmbeddingModel | None = None,
 ) -> None:
-    if export_to == "mongo":
-        exporter = get_mongo_exporter()
-    else:
-        exporter = get_pgvector_exporter()
+    exporter = EXPORT_TARGET_TO_FACTORY[export_to]()
     parsed_outputs, directory_id = await get_parsed_outputs(directory_name, project_id)
     print(f"Received {len(parsed_outputs)} parsed outputs")
     semaphore = Semaphore(MAX_CONCURRENT_EXPORTS)
@@ -48,7 +55,10 @@ async def export_pipeline(
                 )
                 exported_outputs.append(e)
             await exporter.export(
-                exported_outputs, embeddings=embeddings, embedding_model=embedding_model
+                exported_outputs,
+                embeddings=embeddings,
+                embedding_model=embedding_model,
+                project_id=project_id,
             )
             print(f"Exported {i + 1} / {len(parsed_outputs)} files")
 

@@ -5,6 +5,8 @@ from bson import encode
 from bson.raw_bson import RawBSONDocument
 from pydantic import BaseModel, Field
 
+MetadataIndexingMode = Literal["stringify", "infer"]
+
 MetadataScalarValue: TypeAlias = str | int | float | bool | None
 MetadataListValue: TypeAlias = list[str]
 MetadataValue: TypeAlias = MetadataScalarValue | MetadataListValue
@@ -13,6 +15,31 @@ JSONType = dict[str, Any] | list[Any] | str | int | float | bool | None
 
 # Convenience alias for dicts whose values are generic JSON types.
 JSONDictType = dict[str, JSONType]
+
+
+class MetadataIndexingModeValues:
+    """How custom metadata values are typed when written to a vector index.
+
+    ``stringify`` casts every promoted metadata value to a string at write
+    time. This makes the per-key attribute schema stable across batches —
+    once the namespace records ``mf__foo`` as a string, future writes for
+    ``foo`` cannot drift to ``int`` / ``float`` / ``bool`` and cause schema
+    rejections. Heterogeneous metadata across documents (including
+    JSON-typed sources that flip ``1`` to ``1.5``) becomes safe.
+
+    ``infer`` keeps per-batch type inference: ``bool``/``int``/``float``/
+    ``str`` are emitted with their native types so range filters keep
+    working. Callers should only opt in when they control the source of
+    metadata values and can guarantee a consistent type per key for the
+    lifetime of the export config.
+    """
+
+    STRINGIFY: MetadataIndexingMode = "stringify"
+    INFER: MetadataIndexingMode = "infer"
+
+    @classmethod
+    def all(cls) -> list[MetadataIndexingMode]:
+        return [cls.STRINGIFY, cls.INFER]
 
 
 class PageBoundary(BaseModel):

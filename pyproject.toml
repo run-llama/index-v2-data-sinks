@@ -19,6 +19,7 @@ dependencies = [
     "pydantic-settings>=2.14.1",
     "pymongo>=4.17.0",
     "sqlalchemy>=2.0.49",
+    "turbopuffer>=2.1.0",
     "typer>=0.25.1",
 ]
 

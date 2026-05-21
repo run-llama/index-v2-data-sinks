@@ -1,13 +1,13 @@
 import asyncio
 import json
-from typing import Annotated, Literal
+from typing import Annotated
 
 import typer
 from typer import Typer
 
 from .chunking import ChunkingStrategy
 from .embeddings import SupportedEmbeddingModel
-from .pipeline import export_pipeline
+from .pipeline import ExportTarget, export_pipeline
 
 app = Typer(help="Index v2 data sinks CLI.")
 
@@ -24,7 +24,7 @@ def export(
         str, typer.Option("--config-id", "-c", help="Export config ID.")
     ],
     export_to: Annotated[
-        Literal["mongo", "postgres"],
+        ExportTarget,
         typer.Option(
             "--export-to",
             "-t",

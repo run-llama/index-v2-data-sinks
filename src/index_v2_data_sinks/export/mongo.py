@@ -41,6 +41,7 @@ class MongoExporter(Exporter):
         self,
         outputs: list[ExportedOutput],
         *,
+        project_id: str,
         embeddings: list[list[float]] | None = None,
         embedding_model: SupportedEmbeddingModel | None = None,
     ) -> None:

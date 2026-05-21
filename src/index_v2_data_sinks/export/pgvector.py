@@ -44,6 +44,7 @@ class PGVectorExporter(Exporter):
         self,
         outputs: list[ExportedOutput],
         *,
+        project_id: str,
         embeddings: list[list[float]] | None = None,
         embedding_model: SupportedEmbeddingModel | None = None,
     ) -> None:
@@ -67,9 +68,7 @@ class PGVectorExporter(Exporter):
         parsed_directory_file_id = outputs[0].parsed_directory_file_id
         export_config_id = outputs[0].export_config_id
 
-        rows = [
-            self._build_row(o, embeddings[i]) for i, o in enumerate(outputs)
-        ]
+        rows = [self._build_row(o, embeddings[i]) for i, o in enumerate(outputs)]
 
         async with engine.begin() as conn:
             await conn.execute(
@@ -174,16 +173,20 @@ class PGVectorExporter(Exporter):
 
             # Fetch the representative row (chunk_index == min) for each file.
             for parsed_directory_file_id, min_chunk_index in grouped:
-                row_stmt = select(
-                    table.c.metadata_fields,
-                    table.c.content_fingerprint_hash,
-                    table.c.source_modified_at,
-                    table.c.exported_at,
-                ).where(
-                    table.c.export_config_id == export_config_id,
-                    table.c.parsed_directory_file_id == parsed_directory_file_id,
-                    table.c.chunk_index == min_chunk_index,
-                ).limit(1)
+                row_stmt = (
+                    select(
+                        table.c.metadata_fields,
+                        table.c.content_fingerprint_hash,
+                        table.c.source_modified_at,
+                        table.c.exported_at,
+                    )
+                    .where(
+                        table.c.export_config_id == export_config_id,
+                        table.c.parsed_directory_file_id == parsed_directory_file_id,
+                        table.c.chunk_index == min_chunk_index,
+                    )
+                    .limit(1)
+                )
                 row = (await conn.execute(row_stmt)).first()
                 if row is None:
                     continue
