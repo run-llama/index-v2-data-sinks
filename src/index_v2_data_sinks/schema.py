@@ -209,6 +209,58 @@ ExportedOutput = Annotated[
 ]
 
 
+class ExtractSyncOutputV1(BaseModel):
+    """V1 of the directory extract sync output format.
+
+    Stores the structured extraction result from LlamaExtract.
+    Provenance metadata is tracked on the output DirectoryFile's internal_metadata.
+    """
+
+    model_config = {"extra": "ignore"}
+
+    version: Literal["v1"] = Field("v1", description="Schema version discriminator.")
+    product_type: Literal["extract"] = Field(
+        "extract", description="Discriminator vs parse output."
+    )
+    extract_result: JSONDictType | list[JSONDictType] = Field(
+        description="Structured extraction result."
+    )
+    extraction_target: str = Field(
+        description="Extraction target used (e.g. per_doc, per_page)."
+    )
+    data_schema: JSONDictType = Field(description="JSON schema used for extraction.")
+    extract_metadata: JSONDictType | None = Field(
+        default=None, description="Additional extraction metadata."
+    )
+
+
+ExtractSyncOutput = Annotated[
+    ExtractSyncOutputV1,
+    Field(discriminator="version"),
+]
+
+
+class DirectorySyncOutputV1(BaseModel):
+    """Unified envelope for all sync output types.
+
+    A single blob per source file wraps both parse and extract results.
+    """
+
+    version: Literal["v1"] = Field("v1", description="Schema version discriminator.")
+    parse: ParseSyncOutputV1 | None = Field(
+        default=None, description="Parse output, if parse was run."
+    )
+    extract: ExtractSyncOutput | None = Field(
+        default=None, description="Extract output, if extract was run."
+    )
+
+
+DirectorySyncOutput = Annotated[
+    DirectorySyncOutputV1,
+    Field(discriminator="version"),
+]
+
+
 def is_metadata_value(value: object) -> TypeGuard[MetadataValue]:
     """Return whether a value fits the directory metadata contract."""
     if value is None or isinstance(value, str | int | float | bool):

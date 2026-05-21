@@ -228,22 +228,22 @@ class EmbeddingsService:
 
     @overload
     async def embed(
-        self, input: str, model: SupportedEmbeddingModel | None = None
+        self, inpt: str, model: SupportedEmbeddingModel | None = None
     ) -> list[float]: ...
 
     @overload
     async def embed(
-        self, input: list[str], model: SupportedEmbeddingModel | None = None
+        self, inpt: list[str], model: SupportedEmbeddingModel | None = None
     ) -> list[list[float]]: ...
 
     async def embed(
-        self, input: str | list[str], model: SupportedEmbeddingModel | None = None
+        self, inpt: str | list[str], model: SupportedEmbeddingModel | None = None
     ) -> list[float] | list[list[float]]:
         mod: SupportedEmbeddingModel = model or DEFAULT_EMBEDDING_MODEL
         provider, _ = mod.split(":", 1)
         check_api_key(provider)
-        response = await self._client.aembed(input)
-        if isinstance(input, str):
+        response = await self._client.aembed(mod, inpt)
+        if isinstance(inpt, str):
             return response.embeddings[0]
         else:
             return response.embeddings

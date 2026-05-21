@@ -13,10 +13,11 @@ from ..services.mongo import (
     get_mongo_service,
 )
 from ..utils import compute_metadata_hash
+from .base import Exporter
 from .snapshot import ExportSnapshot
 
 
-class MongoExporter:
+class MongoExporter(Exporter):
     """Writes ExportedOutput documents to MongoDB.
 
     Combines ``MongoExportTargetService`` (connection/index management)

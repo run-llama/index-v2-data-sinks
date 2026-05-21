@@ -3,11 +3,11 @@
 Data sink examples for **LlamaCloud Index v2**.
 
 This package shows how to take the output of an Index v2 parse sync
-(`ParseSyncOutput`), chunk it, attach provenance metadata, and export the
-resulting chunks to a downstream sink. The current reference implementation
-targets **MongoDB** (with vector embeddings), but the abstractions are
-designed so additional sinks (e.g. Postgres/pgvector, OpenSearch, S3) can
-be added by implementing the same exporter interface.
+(`ParseSyncOutput`), chunk it, attach provenance metadata, embed it, and
+export the resulting chunks to a downstream sink. Reference
+implementations are provided for **MongoDB** (Atlas vector search) and
+**PostgreSQL + pgvector**. New sinks can be added by implementing the
+shared `Exporter` protocol in `export/base.py`.
 
 ## What it does
 
@@ -19,13 +19,13 @@ Given a directory in LlamaCloud, the pipeline will:
    tracking page boundaries by character offset.
 3. Chunk the concatenated text with [chonkie](https://github.com/chonkie-ai/chonkie)
    (`fast`, `sentence`, or `token` strategy).
-4. Embed with the embedding model of choice
-4. For each chunk, build an `ExportedOutputV1` record that carries the
-   chunk text, character/token offsets, page range, tenant/config IDs,
-   user metadata, attachments, and content-change-detection fields
+4. Embed the chunks with the embedding model of choice.
+5. For each chunk, build an `ExportedOutputV1` record carrying the chunk
+   text, character/token offsets, page range, tenant/config IDs, user
+   metadata, attachments, and content-change-detection fields
    (`content_fingerprint_hash`, `source_modified_at`, `exported_at`).
-5. Hand the records to an exporter that writes them to the sink. The
-   MongoDB exporter uses a delete-then-insert strategy keyed on
+6. Hand the records to an exporter that writes them to the sink. All
+   exporters use a delete-then-insert strategy keyed on
    `(parsed_directory_file_id, export_config_id)` so re-parsed files with
    a different chunk count are fully replaced rather than duplicated.
 
@@ -38,26 +38,34 @@ directory state and decide what to re-export or delete.
 
 ```
 src/index_v2_data_sinks/
-├── pipeline.py          # End-to-end mongo_export_pipeline()
+├── cli.py               # `index-exp` Typer CLI
+├── pipeline.py          # End-to-end export_pipeline()
 ├── parsed_outputs.py    # LlamaCloud directory + file fetching
 ├── chunking.py          # ChunkerService wrapping chonkie
 ├── schema.py            # ParseSyncOutput, Chunk, ExportedOutput, PageBoundary
 ├── embeddings.py        # Embedding model types
 ├── utils.py             # Hashing helpers (metadata fingerprints, etc.)
 ├── configs/
-│   └── mongo.py         # MongoDBIndexV2Settings (pydantic-settings)
+│   ├── mongo.py         # MongoDBIndexV2Settings (pydantic-settings)
+│   └── pgvector.py      # PGVectorIndexV2Settings (pydantic-settings)
 ├── services/
-│   └── mongo.py         # MongoService – connection + collection management
+│   ├── mongo.py         # MongoService – connection + collection management
+│   └── pgvector.py      # PGVectorService – engine + table/index management
 └── export/
+    ├── base.py          # Exporter protocol (shared contract)
     ├── snapshot.py      # ExportSnapshot – target-agnostic diff record
-    └── mongo.py         # MongoExporter – write/delete/list_snapshots
+    ├── mongo.py         # MongoExporter
+    └── pgvector.py      # PGVectorExporter
 ```
 
 ## Requirements
 
 - Python `>=3.13`
 - A LlamaCloud API key
-- A MongoDB deployment (for the Mongo sink)
+- One of:
+  - A MongoDB deployment (for the Mongo sink), or
+  - A PostgreSQL instance with the `vector` extension available (for the
+    pgvector sink). See [Local Postgres](#local-postgres-via-docker-compose).
 
 Dependencies are managed with [uv](https://docs.astral.sh/uv/) and declared
 in `pyproject.toml`.
@@ -93,30 +101,121 @@ All variables use the prefix `DEFAULT_INDEX_MONGO_`:
 | `DEFAULT_INDEX_MONGO_DB_MAP` | Optional namespace → db-name map (JSON). |
 | `DEFAULT_INDEX_MONGO_COLLECTIONS_MAP` | Optional namespace → collection map (JSON). |
 
-### Postgres sink
+### PGVector sink
 
-> WORK IN PROGRESS
+All variables use the prefix `DEFAULT_INDEX_PGVECTOR_`:
+
+| Variable | Description |
+| --- | --- |
+| `DEFAULT_INDEX_PGVECTOR_URI` | PostgreSQL connection URI. `postgres://…` and `postgresql://…` are auto-rewritten to `postgresql+asyncpg://…`. |
+| `DEFAULT_INDEX_PGVECTOR_TABLE` | Base table name for exported chunks. |
+| `DEFAULT_INDEX_PGVECTOR_SCHEMA_NAME` | Schema name. Defaults to `public`. |
+| `DEFAULT_INDEX_PGVECTOR_URI_MAP` | Optional namespace → URI map (JSON). |
+| `DEFAULT_INDEX_PGVECTOR_SCHEMA_MAP` | Optional namespace → schema map (JSON). |
+| `DEFAULT_INDEX_PGVECTOR_TABLES_MAP` | Optional namespace → table-name map (JSON). |
+
+The exporter automatically:
+
+- enables the `vector` extension (`CREATE EXTENSION IF NOT EXISTS vector`),
+- creates the schema if missing,
+- creates one table per embedding model (the default model keeps the base
+  table name; other models get a sanitized suffix) with a properly-sized
+  `VECTOR(dims)` column,
+- creates an HNSW index on `embedding` (`vector_cosine_ops`) and a
+  composite btree on `(export_config_id, parsed_directory_file_id)` to
+  back snapshot/diff queries.
+
+#### Local Postgres via docker-compose
+
+`compose.yaml` provisions a local pgvector-enabled Postgres:
+
+```yaml
+services:
+  pgvector:
+    image: pgvector/pgvector:pg18
+    ports:
+      - 9876:5432
+    ...
+```
+
+> The official `postgres` image does **not** ship the `vector` extension —
+> use the `pgvector/pgvector` image (or install the extension yourself)
+> otherwise the exporter will fail with
+> `extension "vector" is not available`.
+
+Start it with:
+
+```bash
+docker compose up -d
+```
 
 ## Usage
 
-> _The pipeline limits concurrent per-file exports via an `asyncio.Semaphore`
-(`MAX_CONCURRENT_EXPORTS = 10`)._
+> _The pipeline limits concurrent per-file exports via an
+> `asyncio.Semaphore` (`MAX_CONCURRENT_EXPORTS = 10`)._
 
-### MongoDB
+### CLI
+
+The package installs an `index-exp` entrypoint:
+
+```bash
+index-exp \
+    --directory-name "UFO Files" \
+    --project-id   "your-project-id" \
+    --config-id    "your-config-id" \
+    --export-to    postgres \
+    --embedding-model "openai:text-embedding-3-small" \
+    --chunking-strategy sentence \
+    --metadata '{"source": "UFO files", "file_types": "pdf"}'
+```
+
+A wrapper invocation is also provided in `run-cli.sh`. Run `index-exp --help`
+for the full option list.
+
+| Option | Description |
+| --- | --- |
+| `--directory-name`, `-d` | LlamaCloud directory name. |
+| `--project-id`, `-p` | LlamaCloud project ID. |
+| `--config-id`, `-c` | Export config ID. |
+| `--export-to`, `-t` | `mongo` (default) or `postgres`. |
+| `--chunking-strategy`, `-s` | `fast` \| `sentence` \| `token`. Default `sentence`. |
+| `--embedding-model`, `-e` | Embedding model id (e.g. `openai:text-embedding-3-small`). |
+| `--metadata`, `-m` | JSON-encoded dict attached to every chunk. |
+
+### Programmatic
 
 ```python
 import asyncio
 
-from index_v2_data_sinks.pipeline import mongo_export_pipeline
+from index_v2_data_sinks.pipeline import export_pipeline
 
 
 asyncio.run(
-    mongo_export_pipeline(
+    export_pipeline(
+        export_to="postgres",          # or "mongo"
         directory_name="my-index-directory",
         project_id="my-project-id",
         config_id="my-export-config-id",
         chunking_strategy="sentence",  # "fast" | "sentence" | "token"
+        embedding_model="openai:text-embedding-3-small",
         metadata={"source": "docs", "tags": ["public", "v1"]},
     )
 )
 ```
+
+## Adding a new sink
+
+Implement the `Exporter` protocol from `export/base.py`:
+
+```python
+from index_v2_data_sinks.export.base import Exporter
+
+class MySinkExporter(Exporter):
+    async def export(self, outputs, *, embeddings=None, embedding_model=None): ...
+    async def delete_file(self, *, parsed_directory_file_id, export_config_id): ...
+    async def delete_files(self, *, parsed_directory_file_ids, export_config_id): ...
+    async def list_snapshots(self, *, export_config_id): ...
+```
+
+Then wire it into `pipeline.export_pipeline` (and the CLI `--export-to`
+choices) alongside the existing sinks.
