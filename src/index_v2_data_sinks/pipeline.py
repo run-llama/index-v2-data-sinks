@@ -1,9 +1,12 @@
 import asyncio
 from asyncio import Semaphore
 from collections.abc import Callable
-from typing import Literal
+from typing import Literal, cast
 
-from index_v2_data_sinks.export.turbopuffer import get_turbopuffer_exporter
+from index_v2_data_sinks.export.turbopuffer import (
+    TurbopufferExporter,
+    get_turbopuffer_exporter,
+)
 
 from .chunking import ChunkerService, ChunkingStrategy
 from .embeddings import SupportedEmbeddingModel, embeddings_service
@@ -29,6 +32,13 @@ EXPORT_TARGET_TO_FACTORY: dict[ExportTarget, Callable[[], Exporter]] = {
     "qdrant": get_qdrant_exporter,
     "pinecone": get_pinecone_exporter,
 }
+SUPPORTS_CONCURRENT_EXPORTS: dict[ExportTarget, bool] = {
+    "mongo": True,
+    "postgres": True,
+    "qdrant": True,
+    "pinecone": False,
+    "turbopuffer": True,
+}
 
 
 async def export_pipeline(
@@ -43,7 +53,9 @@ async def export_pipeline(
     exporter = EXPORT_TARGET_TO_FACTORY[export_to]()
     parsed_outputs, directory_id = await get_parsed_outputs(directory_name, project_id)
     print(f"Received {len(parsed_outputs)} parsed outputs")
-    semaphore = Semaphore(MAX_CONCURRENT_EXPORTS)
+    semaphore = Semaphore(
+        MAX_CONCURRENT_EXPORTS if SUPPORTS_CONCURRENT_EXPORTS[export_to] else 1
+    )
 
     async def export(po: ParseSyncOutput, i: int) -> None:
         async with semaphore:
@@ -67,3 +79,8 @@ async def export_pipeline(
             print(f"Exported {i + 1} / {len(parsed_outputs)} files")
 
     await asyncio.gather(*[export(po, i) for (i, po) in enumerate(parsed_outputs)])
+    if export_to == "turbopuffer":
+        # turbopuffer needs cleanup
+        exporter = cast(TurbopufferExporter, exporter)
+        client = exporter._target_service.get_client(exporter._target_id)
+        await client.close()
