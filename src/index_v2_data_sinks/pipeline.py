@@ -10,6 +10,7 @@ from .embeddings import SupportedEmbeddingModel, embeddings_service
 from .export.base import Exporter
 from .export.mongo import get_mongo_exporter
 from .export.pgvector import get_pgvector_exporter
+from .export.pinecone import get_pinecone_exporter
 from .export.qdrant import get_qdrant_exporter
 from .parsed_outputs import get_parsed_outputs
 from .schema import (
@@ -20,12 +21,13 @@ from .schema import (
 )
 
 MAX_CONCURRENT_EXPORTS = 10
-ExportTarget = Literal["mongo", "postgres", "turbopuffer", "qdrant"]
+ExportTarget = Literal["mongo", "postgres", "turbopuffer", "qdrant", "pinecone"]
 EXPORT_TARGET_TO_FACTORY: dict[ExportTarget, Callable[[], Exporter]] = {
     "mongo": get_mongo_exporter,
     "postgres": get_pgvector_exporter,
     "turbopuffer": get_turbopuffer_exporter,
     "qdrant": get_qdrant_exporter,
+    "pinecone": get_pinecone_exporter,
 }
 
 
