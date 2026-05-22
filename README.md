@@ -6,7 +6,7 @@ This package shows how to take the output of an Index v2 parse sync
 (`ParseSyncOutput`), chunk it, attach provenance metadata, embed it, and
 export the resulting chunks to a downstream sink. Reference
 implementations are provided for **MongoDB** (Atlas vector search),
-**PostgreSQL + pgvector**, and **Turbopuffer**. New sinks can be added by
+**PostgreSQL + pgvector**, **Turbopuffer**, and **Qdrant**. New sinks can be added by
 implementing the shared `Exporter` protocol in `export/base.py`.
 
 ## What it does
@@ -48,17 +48,20 @@ src/index_v2_data_sinks/
 ├── configs/
 │   ├── mongo.py         # MongoDBIndexV2Settings (pydantic-settings)
 │   ├── pgvector.py      # PGVectorIndexV2Settings (pydantic-settings)
-│   └── turbopuffer.py   # TurbopufferIndexV2Settings (pydantic-settings)
+│   ├── turbopuffer.py   # TurbopufferIndexV2Settings (pydantic-settings)
+│   └── qdrant.py        # QdrantIndexV2Settings (pydantic-settings)
 ├── services/
 │   ├── mongo.py         # MongoService – connection + collection management
 │   ├── pgvector.py      # PGVectorService – engine + table/index management
-│   └── turbopuffer.py   # TurbopufferService – namespace management
+│   ├── turbopuffer.py   # TurbopufferService – namespace management
+│   └── qdrant.py        # QdrantService – collection + payload-index management
 └── export/
     ├── base.py          # Exporter protocol (shared contract)
     ├── snapshot.py      # ExportSnapshot – target-agnostic diff record
     ├── mongo.py         # MongoExporter
     ├── pgvector.py      # PGVectorExporter
-    └── turbopuffer.py   # TurbopufferExporter
+    ├── turbopuffer.py   # TurbopufferExporter
+    └── qdrant.py        # QdrantExporter
 ```
 
 ## Requirements
@@ -69,7 +72,8 @@ src/index_v2_data_sinks/
   - A MongoDB deployment (for the Mongo sink),
   - A PostgreSQL instance with the `vector` extension available (for the
     pgvector sink). See [Local Postgres](#local-postgres-via-docker-compose), or
-  - A [Turbopuffer](https://turbopuffer.com) account (for the Turbopuffer sink).
+  - A [Turbopuffer](https://turbopuffer.com) account (for the Turbopuffer sink), or
+  - A [Qdrant](https://qdrant.tech) deployment (for the Qdrant sink).
 
 Dependencies are managed with [uv](https://docs.astral.sh/uv/) and declared
 in `pyproject.toml`.
@@ -140,11 +144,37 @@ All variables use the prefix `DEFAULT_INDEX_TPUF_`:
 | `DEFAULT_INDEX_TPUF_NAMESPACE_PREFIX` | Prefix prepended to every platform-managed namespace name (final namespace = `{prefix}-{target_id}`). Defaults to `llamacloud`. |
 | `DEFAULT_INDEX_TPUF_REGION_MAP` | Optional per-target-id region overrides (JSON). |
 | `DEFAULT_INDEX_TPUF_NAMESPACE_MAP` | Optional per-target-id namespace overrides (JSON). Values bypass `namespace_prefix`. |
+| `TURBOPUFFER_TARGET_ID` | Target id used by the default `get_turbopuffer_exporter()` instance. Defaults to `DEFAULT`. Callers constructing `TurbopufferExporter` directly must now pass `target_id` explicitly. |
 
 Each export config gets its own Turbopuffer namespace, derived from the
 export config ID and the configured prefix, so a single Turbopuffer
 account can host an arbitrary number of tenants without per-tenant
 infrastructure.
+
+### Qdrant sink
+
+All variables use the prefix `DEFAULT_INDEX_QDRANT_`:
+
+| Variable | Description |
+| --- | --- |
+| `DEFAULT_INDEX_QDRANT_URL` | Qdrant HTTP(S) URL (e.g. `http://localhost:6333` or a Qdrant Cloud endpoint). |
+| `DEFAULT_INDEX_QDRANT_API_KEY` | Optional API key. Required for Qdrant Cloud, can be omitted for unauthenticated local instances. |
+| `DEFAULT_INDEX_QDRANT_COLLECTION_PREFIX` | Prefix prepended to every platform-managed collection name (final collection = `{prefix}-{target_id}`). Defaults to `llamacloud`. |
+| `DEFAULT_INDEX_QDRANT_PREFER_GRPC` | Use the gRPC transport instead of REST. Defaults to `false`. |
+| `DEFAULT_INDEX_QDRANT_TIMEOUT` | Optional per-request timeout in seconds. |
+| `DEFAULT_INDEX_QDRANT_URL_MAP` | Optional per-target-id URL overrides (JSON). |
+| `DEFAULT_INDEX_QDRANT_API_KEY_MAP` | Optional per-target-id API key overrides (JSON). |
+| `DEFAULT_INDEX_QDRANT_COLLECTION_MAP` | Optional per-target-id collection overrides (JSON). Values bypass `collection_prefix`. |
+
+The exporter automatically:
+
+- creates one collection per embedding model (the default model keeps the
+  base collection name; other models get a sanitized suffix) sized to the
+  model's native dimension with `Cosine` distance,
+- creates keyword payload indexes on `export_config_id`, `tenant_id`, and
+  `parsed_directory_file_id` to back filtered deletes and snapshot scrolls,
+- uses deterministic uuid5 point ids derived from
+  `(parsed_directory_file_id, chunk_index)` so re-exports are idempotent.
 
 #### Local Postgres via docker-compose
 
@@ -198,7 +228,7 @@ for the full option list.
 | `--directory-name`, `-d` | LlamaCloud directory name. |
 | `--project-id`, `-p` | LlamaCloud project ID. |
 | `--config-id`, `-c` | Export config ID. |
-| `--export-to`, `-t` | `mongo` (default), `postgres`, or `turbopuffer`. |
+| `--export-to`, `-t` | `mongo` (default), `postgres`, `turbopuffer`, or `qdrant`. |
 | `--chunking-strategy`, `-s` | `fast` \| `sentence` \| `token`. Default `sentence`. |
 | `--embedding-model`, `-e` | Embedding model id (e.g. `openai:text-embedding-3-small`). |
 | `--metadata`, `-m` | JSON-encoded dict attached to every chunk. |
@@ -213,7 +243,7 @@ from index_v2_data_sinks.pipeline import export_pipeline
 
 asyncio.run(
     export_pipeline(
-        export_to="postgres",          # or "mongo" | "turbopuffer"
+        export_to="postgres",          # or "mongo" | "turbopuffer" | "qdrant"
         directory_name="my-index-directory",
         project_id="my-project-id",
         config_id="my-export-config-id",
