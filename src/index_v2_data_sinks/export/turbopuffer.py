@@ -12,6 +12,7 @@ than duplicated.
 
 import functools
 import json
+import os
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, cast
 
@@ -24,7 +25,6 @@ from ..schema import (
     MetadataValue,
 )
 from ..services.turbopuffer import (
-    DEFAULT_TARGET_ID,
     EXPORT_CONFIG_ID_FIELD,
     METADATA_FIELDS_HASH_FIELD,
     TENANT_ID_FIELD,
@@ -271,7 +271,7 @@ class TurbopufferExporter(Exporter):
     def __init__(
         self,
         *,
-        target_id: str | None = None,
+        target_id: str,
         target_service: TurbopufferService | None = None,
         metadata_indexing_mode: MetadataIndexingMode = MetadataIndexingModeValues.INFER,
     ) -> None:
@@ -285,7 +285,7 @@ class TurbopufferExporter(Exporter):
                 "callers should pass the export config id."
             )
         self._target_service = target_service or get_turbopuffer_service()
-        self._target_id = target_id or DEFAULT_TARGET_ID
+        self._target_id = target_id
         self._metadata_indexing_mode = metadata_indexing_mode
 
     async def export(
@@ -527,9 +527,8 @@ def _parse_dt(value: object) -> datetime | None:
     return None
 
 
-tpuf_exporter = TurbopufferExporter()
-
-
 @functools.lru_cache(maxsize=1)
 def get_turbopuffer_exporter() -> TurbopufferExporter:
+    target = os.getenv("TURBOPUFFER_TARGET_ID", "DEFAULT")
+    tpuf_exporter = TurbopufferExporter(target_id=target)
     return tpuf_exporter

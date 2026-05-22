@@ -31,8 +31,6 @@ if TYPE_CHECKING:  # pragma: no cover - import only for typing
     from turbopuffer.types.custom import Filter  # ty: ignore[unresolved-import]
 
 
-DEFAULT_TARGET_ID = "DEFAULT"
-
 # Tpuf attribute names for the two fields that scope every retrieval filter
 # to a single tenant + export config. Defined here so the export-side write
 # and retrieval-side filter construction reference the same string — a

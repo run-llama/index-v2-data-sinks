@@ -8,5 +8,9 @@ wheels/
 
 # Virtual environments
 .venv
+
+# misc
 .env
 run-cli.sh
+.qdrant/
+qdrant-config.yaml
