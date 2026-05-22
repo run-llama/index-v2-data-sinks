@@ -6,7 +6,8 @@ This package shows how to take the output of an Index v2 parse sync
 (`ParseSyncOutput`), chunk it, attach provenance metadata, embed it, and
 export the resulting chunks to a downstream sink. Reference
 implementations are provided for **MongoDB** (Atlas vector search),
-**PostgreSQL + pgvector**, **Turbopuffer**, and **Qdrant**. New sinks can be added by
+**PostgreSQL + pgvector**, **Turbopuffer**, **Qdrant**, and **Pinecone**.
+New sinks can be added by
 implementing the shared `Exporter` protocol in `export/base.py`.
 
 ## What it does
@@ -49,19 +50,22 @@ src/index_v2_data_sinks/
 │   ├── mongo.py         # MongoDBIndexV2Settings (pydantic-settings)
 │   ├── pgvector.py      # PGVectorIndexV2Settings (pydantic-settings)
 │   ├── turbopuffer.py   # TurbopufferIndexV2Settings (pydantic-settings)
-│   └── qdrant.py        # QdrantIndexV2Settings (pydantic-settings)
+│   ├── qdrant.py        # QdrantIndexV2Settings (pydantic-settings)
+│   └── pinecone.py      # PineconeIndexV2Settings (pydantic-settings)
 ├── services/
 │   ├── mongo.py         # MongoService – connection + collection management
 │   ├── pgvector.py      # PGVectorService – engine + table/index management
 │   ├── turbopuffer.py   # TurbopufferService – namespace management
-│   └── qdrant.py        # QdrantService – collection + payload-index management
+│   ├── qdrant.py        # QdrantService – collection + payload-index management
+│   └── pinecone.py      # PineconeService – per-model index + namespace management
 └── export/
     ├── base.py          # Exporter protocol (shared contract)
     ├── snapshot.py      # ExportSnapshot – target-agnostic diff record
     ├── mongo.py         # MongoExporter
     ├── pgvector.py      # PGVectorExporter
     ├── turbopuffer.py   # TurbopufferExporter
-    └── qdrant.py        # QdrantExporter
+    ├── qdrant.py        # QdrantExporter
+    └── pinecone.py      # PineconeExporter
 ```
 
 ## Requirements
@@ -73,7 +77,8 @@ src/index_v2_data_sinks/
   - A PostgreSQL instance with the `vector` extension available (for the
     pgvector sink). See [Local Postgres](#local-postgres-via-docker-compose), or
   - A [Turbopuffer](https://turbopuffer.com) account (for the Turbopuffer sink), or
-  - A [Qdrant](https://qdrant.tech) deployment (for the Qdrant sink).
+  - A [Qdrant](https://qdrant.tech) deployment (for the Qdrant sink), or
+  - A [Pinecone](https://www.pinecone.io) account (for the Pinecone sink).
 
 Dependencies are managed with [uv](https://docs.astral.sh/uv/) and declared
 in `pyproject.toml`.
@@ -176,6 +181,34 @@ The exporter automatically:
 - uses deterministic uuid5 point ids derived from
   `(parsed_directory_file_id, chunk_index)` so re-exports are idempotent.
 
+### Pinecone sink
+
+All variables use the prefix `DEFAULT_INDEX_PINECONE_`:
+
+| Variable | Description |
+| --- | --- |
+| `DEFAULT_INDEX_PINECONE_API_KEY` | Platform Pinecone API key. |
+| `DEFAULT_INDEX_PINECONE_INDEX_PREFIX` | Prefix used to derive the platform-managed index name. The default embedding model keeps `{prefix}`; non-default models get a sanitized `{prefix}-{model}` suffix because Pinecone indexes are dimension-locked. Defaults to `llamacloud`. |
+| `DEFAULT_INDEX_PINECONE_CLOUD` | Cloud provider for serverless index provisioning (`aws` \| `gcp` \| `azure`). Defaults to `aws`. |
+| `DEFAULT_INDEX_PINECONE_REGION` | Cloud region for serverless index provisioning. Defaults to `us-east-1`. |
+| `DEFAULT_INDEX_PINECONE_METRIC` | Distance metric used when creating new indexes (`cosine` \| `dotproduct` \| `euclidean`). Defaults to `cosine`. Pinecone fixes this at index creation time. |
+| `DEFAULT_INDEX_PINECONE_TIMEOUT` | Per-request timeout in seconds. Defaults to `30`. |
+| `DEFAULT_INDEX_PINECONE_API_KEY_MAP` | Optional per-target-id API key overrides (JSON). |
+| `DEFAULT_INDEX_PINECONE_INDEX_PREFIX_MAP` | Optional per-target-id index-prefix overrides (JSON). |
+
+The exporter automatically:
+
+- creates one serverless Pinecone index per embedding model (the default
+  model keeps the base name; other models get a sanitized suffix) sized
+  to the model's native dimension with the configured metric,
+- writes each export config's records into a separate Pinecone
+  **namespace** equal to the `export_config_id`, so per-config
+  isolation, deletes, and snapshot scans never cross-contaminate,
+- uses deterministic ids of the form `{parsed_directory_file_id}#{chunk_index}`
+  so re-exports are idempotent upserts and per-file deletes work via
+  `list_paginated(prefix=...)` (required: Pinecone serverless does not
+  support delete-by-metadata-filter).
+
 #### Local Postgres via docker-compose
 
 `compose.yaml` provisions a local pgvector-enabled Postgres:
@@ -228,7 +261,7 @@ for the full option list.
 | `--directory-name`, `-d` | LlamaCloud directory name. |
 | `--project-id`, `-p` | LlamaCloud project ID. |
 | `--config-id`, `-c` | Export config ID. |
-| `--export-to`, `-t` | `mongo` (default), `postgres`, `turbopuffer`, or `qdrant`. |
+| `--export-to`, `-t` | `mongo` (default), `postgres`, `turbopuffer`, `qdrant`, or `pinecone`. |
 | `--chunking-strategy`, `-s` | `fast` \| `sentence` \| `token`. Default `sentence`. |
 | `--embedding-model`, `-e` | Embedding model id (e.g. `openai:text-embedding-3-small`). |
 | `--metadata`, `-m` | JSON-encoded dict attached to every chunk. |
@@ -243,7 +276,7 @@ from index_v2_data_sinks.pipeline import export_pipeline
 
 asyncio.run(
     export_pipeline(
-        export_to="postgres",          # or "mongo" | "turbopuffer" | "qdrant"
+        export_to="postgres",          # or "mongo" | "turbopuffer" | "qdrant" | "pinecone"
         directory_name="my-index-directory",
         project_id="my-project-id",
         config_id="my-export-config-id",
