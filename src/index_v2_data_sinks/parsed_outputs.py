@@ -40,12 +40,12 @@ async def get_parsed_outputs(
     )
     directory_id = response.items[0].id
     page_token = None
-    files = []
+    files: list[str] = []
     while True:
         files_resp = await client.beta.directories.files.list(
             directory_id=directory_id, page_token=page_token
         )
-        files.extend([f.file_id for f in files_resp.items])
+        files.extend([f.file_id for f in files_resp.items if f.file_id is not None])
         if files_resp.next_page_token is None:
             break
         page_token = files_resp.next_page_token

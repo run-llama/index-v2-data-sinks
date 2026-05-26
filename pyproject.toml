@@ -2,30 +2,43 @@
 requires = ["uv_build>=0.10.8,<0.11"]
 build-backend = "uv_build"
 
+[dependency-groups]
+dev = [
+  "prek>=0.4.2",
+  "pytest>=9.0.3",
+  "pytest-asyncio>=1.4.0",
+  "ruff>=0.15.14",
+  "ty>=0.0.39"
+]
+
 [project]
 name = "index-v2-data-sinks"
 version = "0.1.0"
 description = "Data sinks examples for Index v2"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11,<3.14"
 dependencies = [
-    "asyncpg>=0.31.0",
-    "azure-identity>=1.25.3",
-    "azure-search-documents>=12.0.0",
-    "catsu>=0.1.8",
-    "chonkie>=1.6.7",
-    "greenlet>=3.5.1",
-    "llama-cloud>=2.6.0",
-    "pgvector>=0.4.2",
-    "pinecone>=9.0.1",
-    "pydantic>=2.13.4",
-    "pydantic-settings>=2.14.1",
-    "pymongo>=4.17.0",
-    "qdrant-client>=1.18.0",
-    "sqlalchemy>=2.0.49",
-    "turbopuffer>=2.1.0",
-    "typer>=0.25.1",
+  "asyncpg>=0.31.0",
+  "azure-identity>=1.25.3",
+  "azure-search-documents>=12.0.0",
+  "catsu>=0.1.8",
+  "chonkie>=1.6.7",
+  "greenlet>=3.5.1",
+  "llama-cloud>=2.6.0",
+  "pgvector>=0.4.2",
+  "pinecone>=9.0.1",
+  "pydantic>=2.13.4",
+  "pydantic-settings>=2.14.1",
+  "pymongo>=4.17.0",
+  "qdrant-client>=1.18.0",
+  "sqlalchemy>=2.0.49",
+  "turbopuffer>=2.1.0",
+  "typer>=0.25.1"
 ]
 
 [project.scripts]
 index-exp = "index_v2_data_sinks.cli:app"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
