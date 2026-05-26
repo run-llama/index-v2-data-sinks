@@ -16,7 +16,7 @@ name = "index-v2-data-sinks"
 version = "0.1.0"
 description = "Data sinks examples for Index v2"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 dependencies = [
   "asyncpg>=0.31.0",
   "azure-identity>=1.25.3",
