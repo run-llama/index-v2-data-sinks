@@ -6,7 +6,8 @@ This package shows how to take the output of an Index v2 parse sync
 (`ParseSyncOutput`), chunk it, attach provenance metadata, embed it, and
 export the resulting chunks to a downstream sink. Reference
 implementations are provided for **MongoDB** (Atlas vector search),
-**PostgreSQL + pgvector**, **Turbopuffer**, **Qdrant**, and **Pinecone**.
+**PostgreSQL + pgvector**, **Turbopuffer**, **Qdrant**, **Pinecone**, and
+**Azure AI Search**.
 New sinks can be added by
 implementing the shared `Exporter` protocol in `export/base.py`.
 
@@ -51,13 +52,15 @@ src/index_v2_data_sinks/
 │   ├── pgvector.py      # PGVectorIndexV2Settings (pydantic-settings)
 │   ├── turbopuffer.py   # TurbopufferIndexV2Settings (pydantic-settings)
 │   ├── qdrant.py        # QdrantIndexV2Settings (pydantic-settings)
-│   └── pinecone.py      # PineconeIndexV2Settings (pydantic-settings)
+│   ├── pinecone.py      # PineconeIndexV2Settings (pydantic-settings)
+│   └── azure_search.py  # AzureSearchIndexV2Settings (pydantic-settings)
 ├── services/
 │   ├── mongo.py         # MongoService – connection + collection management
 │   ├── pgvector.py      # PGVectorService – engine + table/index management
 │   ├── turbopuffer.py   # TurbopufferService – namespace management
 │   ├── qdrant.py        # QdrantService – collection + payload-index management
-│   └── pinecone.py      # PineconeService – per-model index + namespace management
+│   ├── pinecone.py      # PineconeService – per-model index + namespace management
+│   └── azure_search.py  # AzureSearchService – per-model index management
 └── export/
     ├── base.py          # Exporter protocol (shared contract)
     ├── snapshot.py      # ExportSnapshot – target-agnostic diff record
@@ -65,7 +68,8 @@ src/index_v2_data_sinks/
     ├── pgvector.py      # PGVectorExporter
     ├── turbopuffer.py   # TurbopufferExporter
     ├── qdrant.py        # QdrantExporter
-    └── pinecone.py      # PineconeExporter
+    ├── pinecone.py      # PineconeExporter
+    └── azure_search.py  # AzureSearchExporter
 ```
 
 ## Requirements
@@ -78,7 +82,9 @@ src/index_v2_data_sinks/
     pgvector sink). See [Local Postgres](#local-postgres-via-docker-compose), or
   - A [Turbopuffer](https://turbopuffer.com) account (for the Turbopuffer sink), or
   - A [Qdrant](https://qdrant.tech) deployment (for the Qdrant sink), or
-  - A [Pinecone](https://www.pinecone.io) account (for the Pinecone sink).
+  - A [Pinecone](https://www.pinecone.io) account (for the Pinecone sink), or
+  - An [Azure AI Search](https://learn.microsoft.com/azure/search/) service
+    (for the Azure AI Search sink).
 
 Dependencies are managed with [uv](https://docs.astral.sh/uv/) and declared
 in `pyproject.toml`.
@@ -209,6 +215,38 @@ The exporter automatically:
   `list_paginated(prefix=...)` (required: Pinecone serverless does not
   support delete-by-metadata-filter).
 
+### Azure AI Search sink
+
+All variables use the prefix `DEFAULT_INDEX_AZURE_SEARCH_`:
+
+| Variable | Description |
+| --- | --- |
+| `DEFAULT_INDEX_AZURE_SEARCH_ENDPOINT` | Service endpoint, e.g. `https://my-service.search.windows.net`. |
+| `DEFAULT_INDEX_AZURE_SEARCH_API_KEY` | Optional admin API key. When omitted, the service falls back to `DefaultAzureCredential` (AAD) — the running identity must hold the `Search Index Data Contributor` role on the service. |
+| `DEFAULT_INDEX_AZURE_SEARCH_INDEX_PREFIX` | Prefix used to derive the platform-managed index name. The default embedding model keeps `{prefix}`; non-default models get a sanitized `{prefix}-{model}` suffix because Azure AI Search indexes are dimension-locked. Defaults to `llamacloud`. |
+| `DEFAULT_INDEX_AZURE_SEARCH_METRIC` | Vector distance metric used when creating new indexes (`cosine` \| `dotProduct` \| `euclidean`). Defaults to `cosine`. Fixed at index creation time. |
+| `DEFAULT_INDEX_AZURE_SEARCH_API_KEY_MAP` | Optional per-target-id API key overrides (JSON). |
+| `DEFAULT_INDEX_AZURE_SEARCH_ENDPOINT_MAP` | Optional per-target-id endpoint overrides (JSON). |
+| `DEFAULT_INDEX_AZURE_SEARCH_INDEX_PREFIX_MAP` | Optional per-target-id index-prefix overrides (JSON). |
+
+The exporter automatically:
+
+- creates one Azure AI Search index per embedding model (the default
+  model keeps the base name; other models get a sanitized suffix)
+  sized to the model's native dimension, with an HNSW vector profile
+  and the configured metric,
+- declares filterable scoping fields (`tenant_id`, `export_config_id`,
+  `parsed_directory_file_id`) and a searchable `content` field, so the
+  index is usable for hybrid (BM25 + vector) retrieval out of the box,
+- writes each export config's records into a shared index isolated by
+  an `export_config_id` filter (Azure AI Search has no namespace
+  primitive; per-config isolation is field-scoped),
+- uses deterministic keys of the form
+  `{parsed_directory_file_id}__{chunk_index}` so re-exports are
+  idempotent `merge_or_upload` operations and per-file deletes work
+  via filtered key enumeration (required: Azure AI Search has no
+  delete-by-filter, only delete-by-key).
+
 #### Local Postgres via docker-compose
 
 `compose.yaml` provisions a local pgvector-enabled Postgres:
@@ -261,7 +299,7 @@ for the full option list.
 | `--directory-name`, `-d` | LlamaCloud directory name. |
 | `--project-id`, `-p` | LlamaCloud project ID. |
 | `--config-id`, `-c` | Export config ID. |
-| `--export-to`, `-t` | `mongo` (default), `postgres`, `turbopuffer`, `qdrant`, or `pinecone`. |
+| `--export-to`, `-t` | `mongo` (default), `postgres`, `turbopuffer`, `qdrant`, `pinecone`, or `azure_search`. |
 | `--chunking-strategy`, `-s` | `fast` \| `sentence` \| `token`. Default `sentence`. |
 | `--embedding-model`, `-e` | Embedding model id (e.g. `openai:text-embedding-3-small`). |
 | `--metadata`, `-m` | JSON-encoded dict attached to every chunk. |
@@ -276,7 +314,7 @@ from index_v2_data_sinks.pipeline import export_pipeline
 
 asyncio.run(
     export_pipeline(
-        export_to="postgres",          # or "mongo" | "turbopuffer" | "qdrant" | "pinecone"
+        export_to="postgres",          # or "mongo" | "turbopuffer" | "qdrant" | "pinecone" | "azure_search"
         directory_name="my-index-directory",
         project_id="my-project-id",
         config_id="my-export-config-id",

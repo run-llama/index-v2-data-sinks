@@ -10,6 +10,7 @@ from index_v2_data_sinks.export.turbopuffer import (
 
 from .chunking import ChunkerService, ChunkingStrategy
 from .embeddings import SupportedEmbeddingModel, embeddings_service
+from .export.azure_search import get_azure_search_exporter
 from .export.base import Exporter
 from .export.mongo import get_mongo_exporter
 from .export.pgvector import get_pgvector_exporter
@@ -24,13 +25,16 @@ from .schema import (
 )
 
 MAX_CONCURRENT_EXPORTS = 10
-ExportTarget = Literal["mongo", "postgres", "turbopuffer", "qdrant", "pinecone"]
+ExportTarget = Literal[
+    "mongo", "postgres", "turbopuffer", "qdrant", "pinecone", "azure_search"
+]
 EXPORT_TARGET_TO_FACTORY: dict[ExportTarget, Callable[[], Exporter]] = {
     "mongo": get_mongo_exporter,
     "postgres": get_pgvector_exporter,
     "turbopuffer": get_turbopuffer_exporter,
     "qdrant": get_qdrant_exporter,
     "pinecone": get_pinecone_exporter,
+    "azure_search": get_azure_search_exporter,
 }
 SUPPORTS_CONCURRENT_EXPORTS: dict[ExportTarget, bool] = {
     "mongo": True,
@@ -38,6 +42,7 @@ SUPPORTS_CONCURRENT_EXPORTS: dict[ExportTarget, bool] = {
     "qdrant": True,
     "pinecone": False,
     "turbopuffer": True,
+    "azure_search": True,
 }
 
 

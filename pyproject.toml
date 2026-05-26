@@ -10,6 +10,8 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "asyncpg>=0.31.0",
+    "azure-identity>=1.25.3",
+    "azure-search-documents>=12.0.0",
     "catsu>=0.1.8",
     "chonkie>=1.6.7",
     "greenlet>=3.5.1",
