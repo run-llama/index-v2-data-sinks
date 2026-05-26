@@ -11,6 +11,7 @@ than duplicated.
 
 import functools
 import uuid
+from datetime import datetime
 from typing import Any
 
 from qdrant_client.http import models as qmodels
@@ -289,6 +290,8 @@ class QdrantExporter(Exporter):
                 file_id = payload.get(PARSED_DIRECTORY_FILE_ID_FIELD)
                 if not isinstance(file_id, str) or file_id in seen:
                     continue
+                modified_at = _as_str(payload.get("source_modified_at"))
+                exported_at = _as_str(payload.get("exported_at"))
                 seen[file_id] = ExportSnapshot(
                     parsed_directory_file_id=file_id,
                     metadata_fields_hash=_as_str(
@@ -297,8 +300,12 @@ class QdrantExporter(Exporter):
                     content_fingerprint_hash=_as_str(
                         payload.get("content_fingerprint_hash")
                     ),
-                    source_modified_at=_as_str(payload.get("source_modified_at")),  # type: ignore[arg-type]
-                    exported_at=_as_str(payload.get("exported_at")),  # type: ignore[arg-type]
+                    source_modified_at=datetime.fromisoformat(modified_at)
+                    if modified_at
+                    else None,
+                    exported_at=datetime.fromisoformat(exported_at)
+                    if exported_at
+                    else None,
                 )
             if offset is None:
                 break

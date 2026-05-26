@@ -42,13 +42,13 @@ from ..utils import compute_metadata_hash
 from .base import Exporter
 from .snapshot import ExportSnapshot
 
-if TYPE_CHECKING:  # pragma: no cover - import only for typing
-    from turbopuffer.types import Row  # ty: ignore[unresolved-import]
-    from turbopuffer.types.attribute_schema_param import (  # ty: ignore[unresolved-import]
+if TYPE_CHECKING:
+    from turbopuffer.types import Row
+    from turbopuffer.types.attribute_schema_param import (
         AttributeSchemaParam,
     )
-    from turbopuffer.types.custom import Filter  # ty: ignore[unresolved-import]
-    from turbopuffer.types.row_param import RowParam  # ty: ignore[unresolved-import]
+    from turbopuffer.types.custom import Filter
+    from turbopuffer.types.row_param import RowParam
 
 
 # Snapshot pagination caps: per-page chunk fetch + max number of pages.
@@ -326,7 +326,7 @@ class TurbopufferExporter(Exporter):
                 "vector": embeddings[i],
                 **_to_attributes(
                     o,
-                    metadata_indexing_mode=self._metadata_indexing_mode,  # type: ignore
+                    metadata_indexing_mode=self._metadata_indexing_mode,  # pyright: ignore[reportArgumentType]
                 ),
             }
             for i, o in enumerate(outputs)
@@ -341,7 +341,7 @@ class TurbopufferExporter(Exporter):
             if o.metadata_fields:
                 batch_schema = _metadata_fields_schema(
                     o.metadata_fields,
-                    metadata_indexing_mode=self._metadata_indexing_mode,  # type: ignore
+                    metadata_indexing_mode=self._metadata_indexing_mode,  # pyright: ignore[reportArgumentType]
                 )
                 for attr_name, attr_schema in batch_schema.items():
                     schema.setdefault(attr_name, attr_schema)

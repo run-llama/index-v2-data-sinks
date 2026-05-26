@@ -13,7 +13,7 @@ def _normalize_pg_uri(uri: str) -> str:
     """
     for src in ("postgres://", "postgresql://"):
         if uri.startswith(src):
-            return "postgresql+asyncpg://" + uri[len(src):]
+            return "postgresql+asyncpg://" + uri[len(src) :]
     return uri
 
 
@@ -40,9 +40,7 @@ class PGVectorIndexV2Settings(BaseSettings):
     )
 
     # Table name within the PostgreSQL database used to store chunks.
-    table: str = Field(
-        description="Table name to use for storing exported outputs"
-    )
+    table: str = Field(description="Table name to use for storing exported outputs")
 
     uri_map: dict[str, str] = Field(
         description="Map for PostgreSQL URIs by target ID",

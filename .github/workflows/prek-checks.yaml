@@ -1,0 +1,22 @@
+name: Prek checks
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  prek:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install uv and set the python version
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: 3.13
+          enable-cache: true
+      - name: Setup ty
+        run: uv tool install ty
+        shell: bash
+      - name: Run prek
+        uses: j178/prek-action@v1 # This action installs prek and runs prek run --all-files on your repository

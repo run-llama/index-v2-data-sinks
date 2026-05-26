@@ -208,9 +208,7 @@ class PGVectorService:
     @staticmethod
     async def _ensure_schema(engine: AsyncEngine, schema_name: str) -> None:
         async with engine.begin() as conn:
-            await conn.execute(
-                text(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"')
-            )
+            await conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"'))
 
     @staticmethod
     async def _ensure_table(engine: AsyncEngine, table: Table) -> None:

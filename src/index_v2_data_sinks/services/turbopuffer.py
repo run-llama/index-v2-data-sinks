@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import ValidationError
 from turbopuffer import (
-    RateLimitError as _TpufRateLimitError,  # ty: ignore[unresolved-import]
+    RateLimitError as _TpufRateLimitError,
 )
 
 from ..configs.turbopuffer import (
@@ -23,12 +23,12 @@ from ..configs.turbopuffer import (
     get_turbopuffer_indexv2_settings,
 )
 
-if TYPE_CHECKING:  # pragma: no cover - import only for typing
-    from turbopuffer import AsyncTurbopuffer  # ty: ignore[unresolved-import]
+if TYPE_CHECKING:
+    from turbopuffer import AsyncTurbopuffer
     from turbopuffer.lib.namespace import (
-        AsyncNamespace,  # ty: ignore[unresolved-import]
+        AsyncNamespace,
     )
-    from turbopuffer.types.custom import Filter  # ty: ignore[unresolved-import]
+    from turbopuffer.types.custom import Filter
 
 
 # Tpuf attribute names for the two fields that scope every retrieval filter
@@ -160,7 +160,7 @@ def _get_turbopuffer_async_client(api_key: str, region: str) -> "AsyncTurbopuffe
     dispatching them onto a thread pool, which would block the event loop
     under concurrent ingest.
     """
-    import turbopuffer  # ty: ignore[unresolved-import]
+    import turbopuffer
 
     return turbopuffer.AsyncTurbopuffer(api_key=api_key, region=region)
 
