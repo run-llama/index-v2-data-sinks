@@ -42,13 +42,13 @@ def test_mongo_resolve_uses_maps_when_present() -> None:
 
 
 def test_mongo_get_redacted_uri_masks_credentials() -> None:
-    s = _build_mongo_settings(uri="mongodb://user:pass@host:27017/db")
+    s = _build_mongo_settings(uri="mongodb://place:holder@host:27017/db")
     redacted = s.get_redacted_uri()
     assert redacted.startswith("mongodb://")
     assert "user" not in redacted
     assert "pass" not in redacted
     # mongodb+srv prefix is preserved.
-    s2 = _build_mongo_settings(uri="mongodb+srv://user:pass@host/db")
+    s2 = _build_mongo_settings(uri="mongodb+srv://place:holder@host/db")
     assert s2.get_redacted_uri().startswith("mongodb+srv://")
 
 
